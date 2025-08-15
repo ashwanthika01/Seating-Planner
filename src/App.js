@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import logo from "./CIT_logo.png";
 
 function App() {
   const citDepartments = ["CIVIL", "EEE", "ECE", "MEC", "MCT", "BME", "IT", "AIDS", "AIML", "ACT", "VLSI"];
@@ -18,7 +19,7 @@ function App() {
     "402", "502", "503", "504", "507", "508", "509", "601", "602", "603", "604", "605", "606", "607", "608"
   ];
 
-  const allYears = [1, 2, 3];
+  const allYears = [1, 2, 3, 4];
   const [step, setStep] = useState(1);
   const [role, setRole] = useState("CIT");
   const [selectedHalls, setSelectedHalls] = useState([]);
@@ -27,15 +28,11 @@ function App() {
   const halls = role === "CIT" ? citHalls : citarHalls;
   const departments = role === "CIT" ? citDepartments : citarDepartments;
 
-  const selectAllHalls = () => {
-    setSelectedHalls([...halls]);
-  };
-
-  const toggleHall = (hall) => {
+  const selectAllHalls = () => setSelectedHalls([...halls]);
+  const toggleHall = (hall) =>
     setSelectedHalls(prev =>
       prev.includes(hall) ? prev.filter(h => h !== hall) : [...prev, hall]
     );
-  };
 
   const toggleDeptForHall = (hall, dept) => {
     setHallAssignments(prev => {
@@ -70,7 +67,6 @@ function App() {
     fontWeight: "bold",
     margin: "6px",
     borderRadius: "8px",
-    transition: "background-color 0.2s",
     cursor: "pointer"
   });
 
@@ -86,11 +82,11 @@ function App() {
   };
 
   const canNext = step === 1 && selectedHalls.length > 0;
-  const handleNext = () => { if (!canNext) return; if (step < 2) setStep(step + 1) };
-  const handleBack = () => { if (step > 1) setStep(step - 1) };
+  const handleNext = () => { if (canNext && step < 2) setStep(step + 1); };
+  const handleBack = () => { if (step > 1) setStep(step - 1); };
 
   const getYearPrefix = (year, dept) => {
-    const baseYear = year === 3 ? "23" : year === 2 ? "24" : "25";
+    const baseYear = year === 3 ? "23" : year === 2 ? "24" : year === 4 ? "22" : "25";
     const deptCode = {
       CSE: "CS", IT: "IT", CIVIL: "CE", ECE: "EC", MEC: "ME", MCT: "MT",
       BME: "BM", ADIS: "AD", AIML: "AM", ACT: "AC", VLSI: "VL", CSBS: "CB",
@@ -99,27 +95,59 @@ function App() {
     return `${baseYear}${deptCode}`;
   };
 
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    const cols = 5, rows = 6;
+const generatePDF = () => {
+  const doc = new jsPDF();
+  const rows = 6; // Number of rows
+  const cols = 5; // Number of seats per row
 
+  // Helper to convert image URL to base64 promise
+  const getBase64FromUrl = async (url) => {
+    const data = await fetch(url);
+    const blob = await data.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  getBase64FromUrl(logo).then((logoBase64) => {
     selectedHalls.forEach((hall, hallIndex) => {
       if (hallIndex > 0) doc.addPage();
-      doc.setFontSize(14);
-      doc.text("CHENNAI INSTITUTE OF TECHNOLOGY – SEATING ARRANGEMENT", 105, 15, { align: "center" });
+
+      // Add CIT logo in the top left corner
+      doc.addImage(logoBase64, 'PNG', 10, 10, 30, 18);
+
+      // Header - Title
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text("Seating Arrangement", 105, 28, { align: "center" });
+
+      // --- Header Section with Hall at Top Right ---
+      const hallData = hallAssignments?.[hall] || {};
+      const departmentsText = hallData.departments?.length > 0 ? "Dept: " + hallData.departments.join(", ") : "";
+      const sessionText = `Session: FN`;
+      const timeText = `Time: 8:00:00 AM – 9:30:00 AM`;
+      const yPos = 45;
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text(departmentsText, 15, yPos);
+      doc.text(sessionText, 80, yPos);
+      doc.text(timeText, 115, yPos);
 
       doc.setFontSize(12);
       doc.setFillColor(0, 51, 102);
-      doc.rect(80, 20, 50, 8, "F");
+      doc.rect(170, 15, 28, 20, "F");
       doc.setTextColor(255, 255, 255);
-      doc.setFont(undefined, "bold");
-      doc.text(`Hall No: ${hall}`, 105, 26, { align: "center" });
-      doc.setFont(undefined, "normal");
-      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Hall\n${hall}`, 184, 25, { align: "center" });
 
-      // Build student list for hall
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+
+      // Generate student seat pairs
       const students = [];
-      const hallData = hallAssignments[hall] || {};
       if (hallData.departments && hallData.years && hallData.rollRanges) {
         hallData.years.forEach(year => {
           hallData.departments.forEach(dept => {
@@ -129,20 +157,20 @@ function App() {
             const end = parseInt(range.end, 10);
             const prefix = getYearPrefix(year, dept);
             for (let i = start; i <= end; i++) {
-              students.push({ roll: `${prefix}${String(i).padStart(4, "0")}`, year, dept });
+              students.push({ roll: `${prefix}${String(i).padStart(3, "0")}`, year, dept });
             }
           });
         });
       }
 
-      // Pairing rule: same year + same dept can't be together
+      // Interleave students
       const available = [...students];
       const seatList = [];
       while (available.length > 0) {
         const first = available.shift();
         let secondIndex = -1;
         for (let i = 0; i < available.length; i++) {
-          if (!(available[i].year === first.year && available[i].dept === first.dept)) {
+          if (!(available?.[i]?.year === first.year && available?.[i]?.dept === first.dept)) {
             secondIndex = i;
             break;
           }
@@ -155,59 +183,184 @@ function App() {
         }
       }
 
-      // Arrange in zig-zag grid
-      const grid = Array.from({ length: rows }, () => Array(cols).fill(""));
+      // Fill the grid with student data
+      const grid = Array.from({ length: rows }, () => []);
       let index = 0;
-      let benchNum = 1;
-      for (let c = 0; c < cols; c++) {
-        if (c % 2 === 0) {
-          for (let r = 0; r < rows; r++) {
-            if (index < seatList.length) {
-              grid[r][c] = [seatList[index], `(${benchNum})`].filter(Boolean).join("\n");
-              index++;
-              benchNum++;
-            }
-          }
-        } else {
-          for (let r = rows - 1; r >= 0; r--) {
-            if (index < seatList.length) {
-              grid[r][c] = [seatList[index], `(${benchNum})`].filter(Boolean).join("\n");
-              index++;
-              benchNum++;
-            }
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (index < seatList.length) {
+            grid?.[r]?.push(seatList?.[index]);
+            index++;
+          } else {
+            grid?.[r]?.push("");
           }
         }
       }
 
-      const columns = Array.from({ length: cols }, (_, i) => `Seat ${i + 1}`);
-      autoTable(doc, {
-        head: [columns],
-        body: grid,
-        startY: 32,
-        styles: { fontSize: 8, cellWidth: "wrap", valign: "middle" },
-        theme: "grid",
-        didParseCell: (data) => {
-          if (/\(\d+\)/.test(data.cell.text[0])) {
-            data.cell.styles.fontStyle = "bold";
+      // --- START: New Serpentine S.No Logic ---
+
+      // 1. Create a grid to hold the serial numbers
+      const snoGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
+      let serialCounter = 1;
+
+      // 2. Populate the grid with the zigzag pattern
+      for (let c = 0; c < cols; c++) {
+        if (c % 2 === 0) { // Even columns (0, 2, 4...): Top to Bottom
+          for (let r = 0; r < rows; r++) {
+            snoGrid[r][c] = serialCounter++;
+          }
+        } else { // Odd columns (1, 3, 5...): Bottom to Top
+          for (let r = rows - 1; r >= 0; r--) {
+            snoGrid[r][c] = serialCounter++;
           }
         }
+      }
+
+      // --- END: New Serpentine S.No Logic ---
+
+      const tableHeaders = [];
+      for (let i = 1; i <= cols; i++) {
+        tableHeaders.push(`Row ${i}`);
+        tableHeaders.push("S.No");
+      }
+
+      // Flatten grid and use the new snoGrid for serial numbers
+      const tableBody = [];
+      for (let r = 0; r < rows; r++) {
+        const rowArr = [];
+        for (let c = 0; c < cols; c++) {
+          rowArr.push(grid?.[r]?.[c]);
+          // Use the pre-calculated serpentine serial number
+          rowArr.push(snoGrid[r][c].toString());
+        }
+        tableBody.push(rowArr);
+      }
+
+      autoTable(doc, {
+        head: [tableHeaders],
+        body: tableBody,
+        startY: 60,
+        theme: "grid",
+        styles: {
+          fontSize: 9,
+          cellPadding: 2,
+          valign: "middle",
+        },
+        headStyles: {
+          fillColor: [240, 240, 240],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+        },
       });
     });
 
     doc.save("hall_seating_arrangement.pdf");
+  });
+};
+
+  const generateNoticeBoardPDF = () => {
+    const doc = new jsPDF();
+    let startY = 15;
+
+    allYears.forEach((year) => {
+      const rows = [];
+      let serial = 1;
+
+      selectedHalls.forEach(hall => {
+        const hallData = hallAssignments[hall] || {};
+        if (!hallData.years?.includes(year)) return;
+
+        hallData.departments?.forEach(dept => {
+          const range = hallData.rollRanges?.[year];
+          if (!range || !range.start || !range.end) return;
+
+          const prefix = getYearPrefix(year, dept);
+          const startRegNo = `${prefix}${String(range.start).padStart(4, "0")}`;
+          const endRegNo = `${prefix}${String(range.end).padStart(4, "0")}`;
+
+          rows.push([serial++, dept, startRegNo, endRegNo, hall]);
+        });
+      });
+
+      if (rows.length === 0) return;
+
+      doc.setFontSize(14);
+      doc.text("CHENNAI INSTITUTE OF TECHNOLOGY – NOTICE BOARD", 105, startY, { align: "center" });
+      startY += 8;
+      doc.setFontSize(12);
+      doc.text(`Year ${year}`, 105, startY, { align: "center" });
+      startY += 6;
+
+      autoTable(doc, {
+        startY,
+        head: [["S.No", "Department", "Start Reg. No", "End Reg. No", "Hall No"]],
+        body: rows,
+        styles: { fontSize: 10, cellWidth: "wrap" },
+        theme: "grid",
+      });
+
+      startY = doc.lastAutoTable.finalY + 15;
+    });
+
+    doc.save("notice_board.pdf");
+  };
+
+  // New Attendance PDF
+  const generateAttendancePDF = () => {
+    const doc = new jsPDF();
+    let startY = 15;
+    selectedHalls.forEach(hall => {
+      const hallData = hallAssignments[hall] || {};
+      if (!hallData.departments || !hallData.years) return;
+
+      let students = [];
+      hallData.years.forEach(year => {
+        hallData.departments.forEach(dept => {
+          const range = hallData.rollRanges?.[year];
+          if (!range || !range.start || !range.end) return;
+          const prefix = getYearPrefix(year, dept);
+          for (let i = parseInt(range.start); i <= parseInt(range.end); i++) {
+            students.push(`${prefix}${String(i).padStart(4, "0")}`);
+          }
+        });
+      });
+
+      if (students.length === 0) return;
+      if (startY !== 15) doc.addPage();
+
+      doc.setFontSize(14);
+      doc.text(`Attendance – Hall ${hall}`, 105, 15, { align: "center" });
+      autoTable(doc, {
+        startY: 25,
+        head: [["S.No", "Roll Number", "Present"]],
+        body: students.map((roll, idx) => [idx + 1, roll, "☐"]),
+        styles: { fontSize: 10, cellWidth: "wrap" },
+        theme: "grid",
+      });
+      startY = doc.lastAutoTable.finalY + 10;
+    });
+    doc.save("attendance.pdf");
   };
 
   return (
-    <div className="container-fluid min-vh-100 py-5" style={{ backgroundColor: "#001f3f", color: "white" }}>
-      <h2 className="text-center mb-4">CHENNAI INSTITUTE OF TECHNOLOGY – SEATING ARRANGEMENT</h2>
+    <div className="container-fluid min-vh-100 py-5" style={{ backgroundColor: "#001f3f", color: "white", position: "relative" }}>
+    <img
+      src={logo} 
+      alt="CIT Logo"
+      style={{
+        position: "absolute",
+        top: "30px",
+        right: "1300px",
+        height: "100px",
+        objectFit: "contain"
+      }}
+    />
+
+    <h2 className="text-center mb-4">CHENNAI INSTITUTE OF TECHNOLOGY – SEATING ARRANGEMENT</h2>
       <div className="text-center mb-3">
         <span className="me-2">Campus:</span>
         {["CIT", "CITAR"].map(r => (
-          <button
-            key={r}
-            style={btnStyle(role === r)}
-            onClick={() => { setRole(r); setSelectedHalls([]); setHallAssignments({}) }}
-          >
+          <button key={r} style={btnStyle(role === r)} onClick={() => { setRole(r); setSelectedHalls([]); setHallAssignments({}); }}>
             {r}
           </button>
         ))}
@@ -217,27 +370,23 @@ function App() {
           Step {step} of 2
         </span>
       </div>
+
       {step === 1 && (
         <div className="text-center">
           <h4>Select Halls</h4>
           <div className="mb-3">
-            <button style={btnStyle()} onClick={selectAllHalls}>
-              Select All Halls
-            </button>
+            <button style={btnStyle()} onClick={selectAllHalls}>Select All Halls</button>
           </div>
           <div className="d-flex justify-content-center flex-wrap mt-3">
             {halls.map(h => (
-              <button
-                key={h}
-                style={btnStyle(selectedHalls.includes(h))}
-                onClick={() => toggleHall(h)}
-              >
+              <button key={h} style={btnStyle(selectedHalls.includes(h))} onClick={() => toggleHall(h)}>
                 {h}
               </button>
             ))}
           </div>
         </div>
       )}
+
       {step === 2 && (
         <div className="text-center">
           <h4>Assign Students per Hall</h4>
@@ -256,6 +405,7 @@ function App() {
                         </label>
                       ))}
                     </div>
+
                     <label>Years (multi-select, priority-wise)</label>
                     <div className="mb-2">
                       {allYears.map(y => (
@@ -264,6 +414,7 @@ function App() {
                         </label>
                       ))}
                     </div>
+
                     <label>Roll Number Range per Year</label>
                     <div>
                       {assignment.years?.map(y => (
@@ -279,13 +430,21 @@ function App() {
               </div>
             );
           })}
+
+          <div className="mt-3">
+            <button style={navBtn} onClick={handleBack}>Back</button>
+            <button style={navBtn} onClick={generatePDF}>Generate Seating PDF</button>
+            <button style={navBtn} onClick={generateNoticeBoardPDF}>Generate Notice Board PDF</button>
+            <button style={navBtn} onClick={generateAttendancePDF}>Attendance PDF</button>
+          </div>
         </div>
       )}
-      <div className="text-center mt-4">
-        {step > 1 && <button style={navBtn} onClick={handleBack}>Back</button>}
-        {step < 2 && <button style={navBtn} onClick={handleNext} disabled={!canNext}>Next</button>}
-        {step === 2 && <button style={navBtn} onClick={generatePDF}>Generate PDF</button>}
-      </div>
+
+      {step === 1 && (
+        <div className="text-center mt-4">
+          <button style={navBtn} disabled={!canNext} onClick={handleNext}>Next</button>
+        </div>
+      )}
     </div>
   );
 }
