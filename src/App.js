@@ -97,10 +97,9 @@ function App() {
 
 const generatePDF = () => {
   const doc = new jsPDF();
-  const rows = 6; // Number of rows
-  const cols = 5; // Number of seats per row
+  const rows = 6;
+  const cols = 5;
 
-  // Helper to convert image URL to base64 promise
   const getBase64FromUrl = async (url) => {
     const data = await fetch(url);
     const blob = await data.blob();
@@ -115,15 +114,12 @@ const generatePDF = () => {
     selectedHalls.forEach((hall, hallIndex) => {
       if (hallIndex > 0) doc.addPage();
 
-      // Add CIT logo in the top left corner
       doc.addImage(logoBase64, 'PNG', 10, 10, 30, 18);
 
-      // Header - Title
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text("Seating Arrangement", 105, 28, { align: "center" });
 
-      // --- Header Section with Hall at Top Right ---
       const hallData = hallAssignments?.[hall] || {};
       const departmentsText = hallData.departments?.length > 0 ? "Dept: " + hallData.departments.join(", ") : "";
       const sessionText = `Session: FN`;
@@ -146,9 +142,12 @@ const generatePDF = () => {
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
 
-      // Generate student seat pairs
+      // Generate students based on selected years, departments, and ranges
       const students = [];
       if (hallData.departments && hallData.years && hallData.rollRanges) {
+        let studentCount = 0;
+        const totalStudentsNeeded = rows * cols * 2;
+        
         hallData.years.forEach(year => {
           hallData.departments.forEach(dept => {
             const range = hallData.rollRanges?.[year];
@@ -156,8 +155,10 @@ const generatePDF = () => {
             const start = parseInt(range.start, 10);
             const end = parseInt(range.end, 10);
             const prefix = getYearPrefix(year, dept);
-            for (let i = start; i <= end; i++) {
+            
+            for (let i = start; i <= end && studentCount < totalStudentsNeeded; i++) {
               students.push({ roll: `${prefix}${String(i).padStart(3, "0")}`, year, dept });
+              studentCount++;
             }
           });
         });
@@ -183,40 +184,37 @@ const generatePDF = () => {
         }
       }
 
-      // Fill the grid with student data
+      // Fill the grid with student data in a serpentine arrangement
       const grid = Array.from({ length: rows }, () => []);
-      let index = 0;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (index < seatList.length) {
-            grid?.[r]?.push(seatList?.[index]);
-            index++;
-          } else {
-            grid?.[r]?.push("");
+      let seatIndex = 0;
+      for (let c = 0; c < cols; c++) {
+        if (c % 2 === 0) { // Even columns (0, 2, 4...): Top to Bottom
+          for (let r = 0; r < rows; r++) {
+            grid[r].push(seatIndex < seatList.length ? seatList[seatIndex] : "");
+            seatIndex++;
+          }
+        } else { // Odd columns (1, 3, 5...): Bottom to Top
+          for (let r = rows - 1; r >= 0; r--) {
+            grid[r].push(seatIndex < seatList.length ? seatList[seatIndex] : "");
+            seatIndex++;
           }
         }
       }
 
-      // --- START: New Serpentine S.No Logic ---
-
-      // 1. Create a grid to hold the serial numbers
+      // Serpentine S.No Logic (This logic remains the same)
       const snoGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
       let serialCounter = 1;
-
-      // 2. Populate the grid with the zigzag pattern
       for (let c = 0; c < cols; c++) {
-        if (c % 2 === 0) { // Even columns (0, 2, 4...): Top to Bottom
+        if (c % 2 === 0) {
           for (let r = 0; r < rows; r++) {
             snoGrid[r][c] = serialCounter++;
           }
-        } else { // Odd columns (1, 3, 5...): Bottom to Top
+        } else {
           for (let r = rows - 1; r >= 0; r--) {
             snoGrid[r][c] = serialCounter++;
           }
         }
       }
-
-      // --- END: New Serpentine S.No Logic ---
 
       const tableHeaders = [];
       for (let i = 1; i <= cols; i++) {
@@ -224,13 +222,11 @@ const generatePDF = () => {
         tableHeaders.push("S.No");
       }
 
-      // Flatten grid and use the new snoGrid for serial numbers
       const tableBody = [];
       for (let r = 0; r < rows; r++) {
         const rowArr = [];
         for (let c = 0; c < cols; c++) {
           rowArr.push(grid?.[r]?.[c]);
-          // Use the pre-calculated serpentine serial number
           rowArr.push(snoGrid[r][c].toString());
         }
         tableBody.push(rowArr);
@@ -257,7 +253,6 @@ const generatePDF = () => {
     doc.save("hall_seating_arrangement.pdf");
   });
 };
-
   const generateNoticeBoardPDF = () => {
     const doc = new jsPDF();
     let startY = 15;
