@@ -4,139 +4,193 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 function App() {
-  const [role, setRole] = useState("");
-  const [year, setYear] = useState("");
-  const [dept, setDept] = useState("");
-  const [hall, setHall] = useState("");
-  const [fromRoll, setFromRoll] = useState("");
-  const [toRoll, setToRoll] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const [seatingList, setSeatingList] = useState([]);
+  const citDepartments = ["CIVIL", "EEE", "ECE", "MEC", "MCT", "BME", "IT", "AIDS", "AIML", "ACT", "VLSI"];
+  const citarDepartments = ["CSE", "CSE-CS", "CSBS"];
 
-  const citDepartments = ["CIVIL","EEE","ECE","MEC","MCT","BME","IT","ADIS","AIML","ACT","VLSI"];
-  const citarDepartments = ["CSE","CSE-CS","CSBS"];
+  const citHalls = [
+    "F8", "F9", "F22", "F23", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8",
+    "S10", "S15", "S16", "S17", "S18", "S20", "S21", "S22", "S23", "S24", "S26", "S27",
+    "MS1", "MS2", "MS3", "MS4", "MS5", "MS6", "MS7", "MS8", "T2", "T3", "T4", "T6",
+    "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14"
+  ];
+  const citarHalls = [
+    "101", "102", "202", "203", "204", "205", "302", "303", "304", "305", "306", "307", "308", "309",
+    "402", "502", "503", "504", "507", "508", "509", "601", "602", "603", "604", "605", "606", "607", "608"
+  ];
 
-  const citHalls = ["F8","F9","F22","F23","S1","S2","S3","S4","S5","S6","S7","S8",
-    "S10","S15","S16","S17","S18","S20","S21","S22","S23","S24","S26","S27",
-    "MS1","MS2","MS3","MS4","MS5","MS6","MS7","MS8",
-    "T2","T3","T4","T6","T7","T8","T9","T10","T11","T12","T13","T14"];
-  const citarHalls = ["101","102","202","203","204","205",
-    "302","303","304","305","306","307","308","309",
-    "402","502","503","504","507","508","509",
-    "601","602","603","604","605","606","607","608"];
+  const allYears = [1, 2, 3];
+  const [step, setStep] = useState(1);
+  const [role, setRole] = useState("CIT");
+  const [selectedHalls, setSelectedHalls] = useState([]);
+  const [hallAssignments, setHallAssignments] = useState({});
 
-  const handleRoleSelect = (selectedRole) => {
-    setRole(selectedRole);
-    setYear(""); setDept(""); setHall(""); setFromRoll(""); setToRoll(""); setSubmitted(false);
+  const halls = role === "CIT" ? citHalls : citarHalls;
+  const departments = role === "CIT" ? citDepartments : citarDepartments;
+
+  const selectAllHalls = () => {
+    setSelectedHalls([...halls]);
   };
 
-  const handleSubmit = () => {
-    if (year && dept && hall && fromRoll && toRoll) {
-      const newEntry = { role, year, dept, hall, fromRoll, toRoll };
-      setSeatingList([...seatingList, newEntry]);
-      setSubmitted(true);
-    } else alert("Please fill all the fields!");
+  const toggleHall = (hall) => {
+    setSelectedHalls(prev =>
+      prev.includes(hall) ? prev.filter(h => h !== hall) : [...prev, hall]
+    );
   };
 
-  const handleAddMore = () => {
-    setYear(""); setDept(""); setHall(""); setFromRoll(""); setToRoll(""); setSubmitted(false);
-  };
-
-  const handleBack = () => {
-    if (fromRoll || toRoll) { setFromRoll(""); setToRoll(""); }
-    else if (hall) setHall("");
-    else if (dept) setDept("");
-    else if (year) setYear("");
-    else if (role) setRole("");
-  };
-
-  // Roll number generation based on year and department
-  const expandRollNumbers = (deptCode, start, end, year) => {
-    let yearPrefix;
-    if (year === 1) yearPrefix = "25";
-    else if (year === 2) yearPrefix = "24";
-    else if (year === 3) yearPrefix = "23";
-
-    const deptCodeMap = {
-      CSE: "CS", IT: "IT", CIVIL: "CE", ECE: "EC",
-      MEC: "ME", MCT: "MT", BME: "BM", ADIS: "AD",
-      AIML: "AM", ACT: "AC", VLSI: "VL", CSBS: "CB",
-      EEE: "EE", "CSE-CS": "CZ"
-    };
-
-    const prefix = yearPrefix + deptCodeMap[deptCode];
-    const rolls = [];
-    for (let i = start; i <= end; i++) {
-      rolls.push(prefix + String(i).padStart(4, "0"));
-    }
-    return rolls;
-  };
-
-  const handleGeneratePDF = () => {
-    const doc = new jsPDF();
-    const colsPerRow = 6;   // Seats per row
-
-    // Group all entries by hall
-    const hallGroups = {};
-    seatingList.forEach(item => {
-      if (!hallGroups[item.hall]) hallGroups[item.hall] = [];
-      const rolls = expandRollNumbers(item.dept, parseInt(item.fromRoll), parseInt(item.toRoll), item.year)
-        .map(r => ({ roll: r, year: item.year }));
-      hallGroups[item.hall].push(...rolls);
+  const toggleDeptForHall = (hall, dept) => {
+    setHallAssignments(prev => {
+      const prevDept = prev[hall]?.departments || [];
+      const newDept = prevDept.includes(dept) ? prevDept.filter(d => d !== dept) : [...prevDept, dept];
+      return { ...prev, [hall]: { ...prev[hall], departments: newDept } };
     });
+  };
 
-    let firstPage = true;
+  const toggleYearForHall = (hall, year) => {
+    setHallAssignments(prev => {
+      const prevYears = prev[hall]?.years || [];
+      const newYears = prevYears.includes(year) ? prevYears.filter(y => y !== year) : [...prevYears, year];
+      return { ...prev, [hall]: { ...prev[hall], years: newYears } };
+    });
+  };
 
-    Object.keys(hallGroups).forEach(hallNum => {
-      if (!firstPage) doc.addPage();
-      firstPage = false;
+  const handleRollRangeChange = (hall, year, type, value) => {
+    setHallAssignments(prev => {
+      const prevRanges = prev[hall]?.rollRanges || {};
+      const newRange = { ...prevRanges[year], [type]: value };
+      const newRanges = { ...prevRanges, [year]: newRange };
+      return { ...prev, [hall]: { ...prev[hall], rollRanges: newRanges } };
+    });
+  };
 
+  const btnStyle = (active = false) => ({
+    backgroundColor: active ? "#28a745" : "#FFD700",
+    border: "2px solid #DAA520",
+    color: "black",
+    padding: "8px 16px",
+    fontWeight: "bold",
+    margin: "6px",
+    borderRadius: "8px",
+    transition: "background-color 0.2s",
+    cursor: "pointer"
+  });
+
+  const navBtn = {
+    backgroundColor: "#FFD700",
+    border: "2px solid #DAA520",
+    color: "black",
+    padding: "8px 16px",
+    fontWeight: "bold",
+    margin: "6px",
+    borderRadius: "8px",
+    cursor: "pointer"
+  };
+
+  const canNext = step === 1 && selectedHalls.length > 0;
+  const handleNext = () => { if (!canNext) return; if (step < 2) setStep(step + 1) };
+  const handleBack = () => { if (step > 1) setStep(step - 1) };
+
+  const getYearPrefix = (year, dept) => {
+    const baseYear = year === 3 ? "23" : year === 2 ? "24" : "25";
+    const deptCode = {
+      CSE: "CS", IT: "IT", CIVIL: "CE", ECE: "EC", MEC: "ME", MCT: "MT",
+      BME: "BM", ADIS: "AD", AIML: "AM", ACT: "AC", VLSI: "VL", CSBS: "CB",
+      EEE: "EE", "CSE-CS": "CZ"
+    }[dept] || "XX";
+    return `${baseYear}${deptCode}`;
+  };
+
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const cols = 5, rows = 6;
+
+    selectedHalls.forEach((hall, hallIndex) => {
+      if (hallIndex > 0) doc.addPage();
       doc.setFontSize(14);
-      doc.text("CHENNAI INSTITUTE OF TECHNOLOGY", 105, 15, { align: "center" });
+      doc.text("CHENNAI INSTITUTE OF TECHNOLOGY – SEATING ARRANGEMENT", 105, 15, { align: "center" });
+
       doc.setFontSize(12);
-      doc.text("Seating Arrangement", 105, 22, { align: "center" });
-      doc.text(`Hall No: ${hallNum}`, 105, 28, { align: "center" });
-      doc.setFontSize(10);
-      doc.text(`Date: 13-08-2025  Session: Morning  Time: 10:00 AM`, 105, 34, { align: "center" });
+      doc.setFillColor(0, 51, 102);
+      doc.rect(80, 20, 50, 8, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont(undefined, "bold");
+      doc.text(`Hall No: ${hall}`, 105, 26, { align: "center" });
+      doc.setFont(undefined, "normal");
+      doc.setTextColor(0, 0, 0);
 
-      const hallRolls = hallGroups[hallNum];
-
-      // Group students by year
-      const yearGroups = {};
-      hallRolls.forEach(s => {
-        if (!yearGroups[s.year]) yearGroups[s.year] = [];
-        yearGroups[s.year].push(s.roll);
-      });
-
-      const years = Object.keys(yearGroups).sort((a,b)=>a-b);
-      const seatingPairs = [];
-      const maxLen = Math.max(...years.map(y => yearGroups[y].length));
-
-      // Column-first seating
-      for (let i = 0; i < maxLen; i++) {
-        const pair = [];
-        years.forEach(y => {
-          if (yearGroups[y][i]) pair.push(yearGroups[y][i]);
+      // Build student list for hall
+      const students = [];
+      const hallData = hallAssignments[hall] || {};
+      if (hallData.departments && hallData.years && hallData.rollRanges) {
+        hallData.years.forEach(year => {
+          hallData.departments.forEach(dept => {
+            const range = hallData.rollRanges?.[year];
+            if (!range || !range.start || !range.end) return;
+            const start = parseInt(range.start, 10);
+            const end = parseInt(range.end, 10);
+            const prefix = getYearPrefix(year, dept);
+            for (let i = start; i <= end; i++) {
+              students.push({ roll: `${prefix}${String(i).padStart(4, "0")}`, year, dept });
+            }
+          });
         });
-        if (pair.length === 2) seatingPairs.push(`${pair[0]}\n${pair[1]}`);
-        else if (pair.length === 1) seatingPairs.push(`${pair[0]}`);
       }
 
-      // Split into rows
-      const rows = [];
-      for (let i = 0; i < seatingPairs.length; i += colsPerRow) {
-        rows.push(seatingPairs.slice(i, i + colsPerRow));
+      // Pairing rule: same year + same dept can't be together
+      const available = [...students];
+      const seatList = [];
+      while (available.length > 0) {
+        const first = available.shift();
+        let secondIndex = -1;
+        for (let i = 0; i < available.length; i++) {
+          if (!(available[i].year === first.year && available[i].dept === first.dept)) {
+            secondIndex = i;
+            break;
+          }
+        }
+        if (secondIndex !== -1) {
+          const second = available.splice(secondIndex, 1)[0];
+          seatList.push(`${first.roll}\n${second.roll}`);
+        } else {
+          seatList.push(`${first.roll}`);
+        }
       }
 
-      const columns = [];
-      for (let i = 0; i < colsPerRow; i++) columns.push(`Seat ${i + 1}`);
+      // Arrange in zig-zag grid
+      const grid = Array.from({ length: rows }, () => Array(cols).fill(""));
+      let index = 0;
+      let benchNum = 1;
+      for (let c = 0; c < cols; c++) {
+        if (c % 2 === 0) {
+          for (let r = 0; r < rows; r++) {
+            if (index < seatList.length) {
+              grid[r][c] = [seatList[index], `(${benchNum})`].filter(Boolean).join("\n");
+              index++;
+              benchNum++;
+            }
+          }
+        } else {
+          for (let r = rows - 1; r >= 0; r--) {
+            if (index < seatList.length) {
+              grid[r][c] = [seatList[index], `(${benchNum})`].filter(Boolean).join("\n");
+              index++;
+              benchNum++;
+            }
+          }
+        }
+      }
 
+      const columns = Array.from({ length: cols }, (_, i) => `Seat ${i + 1}`);
       autoTable(doc, {
         head: [columns],
-        body: rows,
-        startY: 40,
-        styles: { fontSize: 8, cellWidth: "auto", valign: "middle" },
+        body: grid,
+        startY: 32,
+        styles: { fontSize: 8, cellWidth: "wrap", valign: "middle" },
         theme: "grid",
+        didParseCell: (data) => {
+          if (/\(\d+\)/.test(data.cell.text[0])) {
+            data.cell.styles.fontStyle = "bold";
+          }
+        }
       });
     });
 
@@ -144,113 +198,94 @@ function App() {
   };
 
   return (
-    <div className="container mt-5">
-      <h2 className="text-center mb-4">
-        CHENNAI INSTITUTE OF TECHNOLOGY - SEATING ARRANGEMENT
-      </h2>
-
-      {(role || year || dept || hall || submitted) && (
-        <button className="btn btn-secondary mb-3" onClick={handleBack}>
-          &larr; Back
-        </button>
-      )}
-
-      {!role && (
-        <div className="text-center">
-          <button className="btn btn-primary m-3 btn-lg" onClick={() => handleRoleSelect("CIT")}>
-            CIT
+    <div className="container-fluid min-vh-100 py-5" style={{ backgroundColor: "#001f3f", color: "white" }}>
+      <h2 className="text-center mb-4">CHENNAI INSTITUTE OF TECHNOLOGY – SEATING ARRANGEMENT</h2>
+      <div className="text-center mb-3">
+        <span className="me-2">Campus:</span>
+        {["CIT", "CITAR"].map(r => (
+          <button
+            key={r}
+            style={btnStyle(role === r)}
+            onClick={() => { setRole(r); setSelectedHalls([]); setHallAssignments({}) }}
+          >
+            {r}
           </button>
-          <button className="btn btn-success m-3 btn-lg" onClick={() => handleRoleSelect("CITAR")}>
-            CITAR
-          </button>
-        </div>
-      )}
-
-      {role && !year && (
+        ))}
+      </div>
+      <div className="text-center mb-4">
+        <span style={{ padding: "6px 10px", borderRadius: "20px", background: "#143b6b", border: "1px solid #FFD700" }}>
+          Step {step} of 2
+        </span>
+      </div>
+      {step === 1 && (
         <div className="text-center">
-          <h4>Select Year</h4>
-          {[1,2,3].map(y => (
-            <button key={y} className="btn btn-outline-primary m-2" onClick={() => setYear(y)}>
-              Year {y}
+          <h4>Select Halls</h4>
+          <div className="mb-3">
+            <button style={btnStyle()} onClick={selectAllHalls}>
+              Select All Halls
             </button>
-          ))}
-        </div>
-      )}
-
-      {role && year && !dept && (
-        <div className="text-center">
-          <h4>Year {year} - Select Department</h4>
-          {(role === "CIT" ? citDepartments : citarDepartments).map(d => (
-            <button key={d} className="btn btn-outline-dark m-2" onClick={() => setDept(d)}>{d}</button>
-          ))}
-        </div>
-      )}
-
-      {role && year && dept && !hall && (
-        <div className="text-center mt-3">
-          <h4>{dept} - Select Hall Number</h4>
-          <select className="form-select w-50 mx-auto" value={hall} onChange={e => setHall(e.target.value)}>
-            <option value="">-- Select Hall --</option>
-            {(role === "CIT" ? citHalls : citarHalls).map(h => <option key={h} value={h}>{h}</option>)}
-          </select>
-        </div>
-      )}
-
-      {role && year && dept && hall && !submitted && (
-        <div className="text-center mt-4">
-          <h4>{hall} - {dept} - Year {year}</h4>
-          <div className="row justify-content-center">
-            <div className="col-md-3">
-              <input type="number" placeholder="From Roll No" className="form-control mb-2" value={fromRoll} onChange={e => setFromRoll(e.target.value)} />
-            </div>
-            <div className="col-md-3">
-              <input type="number" placeholder="To Roll No" className="form-control mb-2" value={toRoll} onChange={e => setToRoll(e.target.value)} />
-            </div>
           </div>
-          <button className="btn btn-primary" onClick={handleSubmit}>Submit</button>
-        </div>
-      )}
-
-      {submitted && (
-        <div className="text-center mt-3">
-          <button className="btn btn-success m-2" onClick={handleAddMore}>Add More</button>
-        </div>
-      )}
-
-      {seatingList.length > 0 && (
-        <div className="mt-4">
-          <h4 className="text-center mb-3">Seating Entries</h4>
-          <table className="table table-bordered text-center">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Year</th>
-                <th>Department</th>
-                <th>Hall</th>
-                <th>From Roll</th>
-                <th>To Roll</th>
-              </tr>
-            </thead>
-            <tbody>
-              {seatingList.map((entry, index) => (
-                <tr key={index}>
-                  <td>{entry.role}</td>
-                  <td>{entry.year}</td>
-                  <td>{entry.dept}</td>
-                  <td>{entry.hall}</td>
-                  <td>{entry.fromRoll}</td>
-                  <td>{entry.toRoll}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="text-center">
-            <button className="btn btn-primary mt-3" onClick={handleGeneratePDF}>
-              Generate PDF
-            </button>
+          <div className="d-flex justify-content-center flex-wrap mt-3">
+            {halls.map(h => (
+              <button
+                key={h}
+                style={btnStyle(selectedHalls.includes(h))}
+                onClick={() => toggleHall(h)}
+              >
+                {h}
+              </button>
+            ))}
           </div>
         </div>
       )}
+      {step === 2 && (
+        <div className="text-center">
+          <h4>Assign Students per Hall</h4>
+          {selectedHalls.map(hall => {
+            const assignment = hallAssignments[hall] || { departments: [], years: [], rollRanges: {} };
+            return (
+              <div key={hall} className="mb-3 border p-3 rounded">
+                <h5>Hall {hall}</h5>
+                <div className="d-flex justify-content-center flex-wrap">
+                  <div className="m-2">
+                    <label>Departments (multi-select)</label>
+                    <div className="mb-1">
+                      {departments.map(d => (
+                        <label key={d} className="me-2">
+                          <input type="checkbox" checked={assignment.departments?.includes(d) || false} onChange={() => toggleDeptForHall(hall, d)} /> {d}
+                        </label>
+                      ))}
+                    </div>
+                    <label>Years (multi-select, priority-wise)</label>
+                    <div className="mb-2">
+                      {allYears.map(y => (
+                        <label key={y} className="me-2">
+                          <input type="checkbox" checked={assignment.years?.includes(y) || false} onChange={() => toggleYearForHall(hall, y)} /> Year {y}
+                        </label>
+                      ))}
+                    </div>
+                    <label>Roll Number Range per Year</label>
+                    <div>
+                      {assignment.years?.map(y => (
+                        <div key={y} className="mb-2">
+                          <strong>Year {y}:</strong>
+                          <input type="number" placeholder="Start" value={assignment.rollRanges?.[y]?.start || ""} onChange={e => handleRollRangeChange(hall, y, "start", e.target.value)} style={{ width: "70px", margin: "0 5px" }} /> -
+                          <input type="number" placeholder="End" value={assignment.rollRanges?.[y]?.end || ""} onChange={e => handleRollRangeChange(hall, y, "end", e.target.value)} style={{ width: "70px", margin: "0 5px" }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="text-center mt-4">
+        {step > 1 && <button style={navBtn} onClick={handleBack}>Back</button>}
+        {step < 2 && <button style={navBtn} onClick={handleNext} disabled={!canNext}>Next</button>}
+        {step === 2 && <button style={navBtn} onClick={generatePDF}>Generate PDF</button>}
+      </div>
     </div>
   );
 }
